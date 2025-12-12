@@ -16,6 +16,13 @@ posts_db = [
     {"id": 103, "user_id": 2, "title": "Tutorial Ariadne", "content": "Schema-first itu asik..."},
 ]
 
+comments_db = [
+    {"id": 1001, "post_id": 101, "author": "Adi Pratama", "text": "Sangat membantu, terima kasih!"},
+    {"id": 1002, "post_id": 101, "author": "Rini Susanti", "text": "Bisa diperjelas lebih detail gak?"},
+    {"id": 1003, "post_id": 102, "author": "Bimo Handoko", "text": "Setuju, GraphQL lebih fleksibel."},
+    {"id": 1004, "post_id": 103, "author": "Adi Pratama", "text": "Schema-first memang cara terbaik!"},
+]
+
 # --- 2. REST API DEFINITION ---
 app = FastAPI(title="REST to GraphQL Wrapper")
 
@@ -35,6 +42,11 @@ async def get_user(user_id: int):
 async def get_posts_by_user(user_id: int):
     # Filter postingan berdasarkan user_id
     return [p for p in posts_db if p["user_id"] == user_id]
+
+@app.get("/rest/posts/{post_id}/comments", tags=["REST"])
+async def get_comments_by_post(post_id: int):
+    # Filter komentar berdasarkan post_id
+    return [c for c in comments_db if c["post_id"] == post_id]
 
 # --- 3. GRAPHQL SCHEMA ---
 # Perhatikan: Kita menambahkan field 'posts' di dalam User,
@@ -57,6 +69,13 @@ type_defs = """
         id: ID!
         title: String!
         content: String!
+        comments: [Comment]
+    }
+
+    type Comment {
+        id: ID!
+        author: String!
+        text: String!
     }
 """
 
@@ -64,6 +83,7 @@ type_defs = """
 
 query = QueryType()
 user_type = ObjectType("User")
+post_type = ObjectType("Post")
 
 # URL dasar REST API kita (localhost)
 REST_API_URL = "http://127.0.0.1:8000/rest"
@@ -98,8 +118,19 @@ async def resolve_user_posts(user_obj, info):
         response = await client.get(f"{REST_API_URL}/users/{user_id}/posts")
         return response.json()
 
+# Resolver KHUSUS untuk field 'comments' milik Post
+@post_type.field("comments")
+async def resolve_post_comments(post_obj, info):
+    # post_obj adalah data post yang didapat dari resolver sebelumnya
+    post_id = post_obj.get("id")
+    
+    async with httpx.AsyncClient() as client:
+        # Panggil endpoint REST untuk ambil komentar
+        response = await client.get(f"{REST_API_URL}/posts/{post_id}/comments")
+        return response.json()
+
 # --- 5. SETUP APP ---
-schema = make_executable_schema(type_defs, query, user_type)
+schema = make_executable_schema(type_defs, query, user_type, post_type)
 graphql_app = GraphQL(schema, debug=True)
 
 # Pasang aplikasi GraphQL di route /graphql
